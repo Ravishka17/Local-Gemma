@@ -1,4 +1,11 @@
 .DS_Store
-/flutter/build
-/flutter/.dart_tool
-/webapp-demo
+/build
+/.gradle
+/.idea
+*.iml
+*.class
+*.jar
+*.war
+*.ear
+/local.properties
+/.kotlin
