@@ -9,3 +9,17 @@
 *.ear
 /local.properties
 /.kotlin
+
+# Native build artifacts
+build/cmake/
+vendor/*/
+!vendor/llama.cpp
+*.so
+*.dylib
+*.dll
+
+# Gradle/JVM
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+out/
+run/

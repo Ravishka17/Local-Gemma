@@ -49,9 +49,9 @@ object LlamaCppNative {
     private fun loadNativeLibrary() {
         val osName = System.getProperty("os.name").lowercase()
         val libName = when {
-            osName.contains("win") -> "llama.dll"
-            osName.contains("mac") -> "libllama.dylib"
-            else -> "libllama.so"
+            osName.contains("win") -> "localgemma.dll"
+            osName.contains("mac") -> "liblocalgemma.dylib"
+            else -> "liblocalgemma.so"
         }
 
         val resourcePath = "/native/$libName"
@@ -64,7 +64,7 @@ object LlamaCppNative {
             System.load(libFile.absolutePath)
         } else {
             try {
-                System.loadLibrary("llama")
+                System.loadLibrary("localgemma")
             } catch (_: UnsatisfiedLinkError) {
                 // Will throw at first native call with clearer context
             }

@@ -1,0 +1,58 @@
+name: Build LocalGemma
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: latest
+
+      - name: Build native library (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -S . -B build/cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/cmake --parallel
+
+      - name: Build native library (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -S . -B build/cmake
+          cmake --build build/cmake --parallel --config Release
+
+      - name: Build Kotlin app
+        if: runner.os != 'Windows'
+        run: ./gradlew build installDist
+
+      - name: Build Kotlin app (Windows)
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat build installDist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: localgemma-${{ matrix.os }}
+          path: build/install/localgemma/

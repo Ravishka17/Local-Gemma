@@ -19,6 +19,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
@@ -34,8 +35,22 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
     private val loadedModels = ConcurrentHashMap<String, Pair<InstalledModel, com.localgemma.inference.LoadedModel>>()
     private val engine: InferenceEngine = LlamaCppEngine()
 
-    fun start(host: String = "0.0.0.0", port: Int = 8080) {
+    fun start(host: String = "0.0.0.0", port: Int = 8080, preloadModel: String? = null) {
         if (server != null) return
+
+        preloadModel?.let { name ->
+            val model = ModelRegistry.get(name)
+            if (model != null) {
+                logger.info("Pre-loading model: $name")
+                try {
+                    getOrLoadModel(model)
+                } catch (e: Exception) {
+                    logger.error("Failed to pre-load model $name", e)
+                }
+            } else {
+                logger.warn("Pre-load model '$name' not found in registry")
+            }
+        }
 
         server = embeddedServer(Netty, port = port, host = host) {
             install(ContentNegotiation) {
@@ -139,6 +154,8 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
                 }
             } else {
                 val responseText = runBlockingInference(loaded, prompt, params)
+                val promptTokens = LlamaCppNative.tokenize(loaded.nativeHandle, prompt, true).size
+                val completionTokens = LlamaCppNative.tokenize(loaded.nativeHandle, responseText, false).size
                 call.respond(ChatCompletionResponse(
                     id = "chatcmpl-" + UUID.randomUUID().toString(),
                     created = System.currentTimeMillis() / 1000,
@@ -151,9 +168,9 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
                         )
                     ),
                     usage = Usage(
-                        prompt_tokens = prompt.length / 4,
-                        completion_tokens = responseText.length / 4,
-                        total_tokens = (prompt.length + responseText.length) / 4
+                        prompt_tokens = promptTokens,
+                        completion_tokens = completionTokens,
+                        total_tokens = promptTokens + completionTokens
                     )
                 ))
             }
@@ -190,6 +207,8 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
                 }
             } else {
                 val responseText = runBlockingInference(loaded, request.prompt, params)
+                val promptTokens = LlamaCppNative.tokenize(loaded.nativeHandle, request.prompt, true).size
+                val completionTokens = LlamaCppNative.tokenize(loaded.nativeHandle, responseText, false).size
                 call.respond(CompletionResponse(
                     id = "cmpl-" + UUID.randomUUID().toString(),
                     created = System.currentTimeMillis() / 1000,
@@ -202,9 +221,9 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
                         )
                     ),
                     usage = Usage(
-                        prompt_tokens = request.prompt.length / 4,
-                        completion_tokens = responseText.length / 4,
-                        total_tokens = (request.prompt.length + responseText.length) / 4
+                        prompt_tokens = promptTokens,
+                        completion_tokens = completionTokens,
+                        total_tokens = promptTokens + completionTokens
                     )
                 ))
             }
@@ -277,40 +296,44 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
     ) {
         val id = "chatcmpl-" + UUID.randomUUID().toString()
         val created = System.currentTimeMillis() / 1000
-        val deferred = CompletableDeferred<Unit>()
+        val channel = Channel<String>(Channel.UNLIMITED)
 
-        launch {
+        val generationJob = launch {
             try {
                 engine.generate(loaded, prompt, params) { token ->
-                    runBlocking {
-                        val chunk = ChatCompletionChunk(
-                            id = id,
-                            created = created,
-                            model = modelName,
-                            choices = listOf(
-                                ChatChunkChoice(
-                                    index = 0,
-                                    delta = ChatDelta(content = token)
-                                )
-                            )
-                        )
-                        writer.writeStringUtf8("data: ${Json.encodeToString(chunk)}\n\n")
-                        writer.flush()
-                    }
+                    channel.trySend(token)
                 }
-                writer.writeStringUtf8("data: [DONE]\n\n")
-                writer.flush()
-                deferred.complete(Unit)
+                channel.close()
             } catch (e: Exception) {
-                runBlocking {
-                    writer.writeStringUtf8("data: {\"error\": \"${e.message}\"}\n\n")
-                    writer.writeStringUtf8("data: [DONE]\n\n")
-                    writer.flush()
-                }
-                deferred.completeExceptionally(e)
+                channel.close(e)
             }
         }
-        deferred.await()
+
+        try {
+            for (token in channel) {
+                val chunk = ChatCompletionChunk(
+                    id = id,
+                    created = created,
+                    model = modelName,
+                    choices = listOf(
+                        ChatChunkChoice(
+                            index = 0,
+                            delta = ChatDelta(content = token)
+                        )
+                    )
+                )
+                writer.writeStringUtf8("data: ${Json.encodeToString(chunk)}\n\n")
+                writer.flush()
+            }
+            writer.writeStringUtf8("data: [DONE]\n\n")
+            writer.flush()
+        } catch (e: Exception) {
+            writer.writeStringUtf8("data: {\"error\": \"${e.message}\"}\n\n")
+            writer.writeStringUtf8("data: [DONE]\n\n")
+            writer.flush()
+        }
+
+        generationJob.join()
     }
 
     private suspend fun streamCompletionResponse(
@@ -322,39 +345,43 @@ class OpenAiServer : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
     ) {
         val id = "cmpl-" + UUID.randomUUID().toString()
         val created = System.currentTimeMillis() / 1000
-        val deferred = CompletableDeferred<Unit>()
+        val channel = Channel<String>(Channel.UNLIMITED)
 
-        launch {
+        val generationJob = launch {
             try {
                 engine.generate(loaded, prompt, params) { token ->
-                    runBlocking {
-                        val chunk = CompletionChunk(
-                            id = id,
-                            created = created,
-                            model = modelName,
-                            choices = listOf(
-                                CompletionChunkChoice(
-                                    index = 0,
-                                    text = token
-                                )
-                            )
-                        )
-                        writer.writeStringUtf8("data: ${Json.encodeToString(chunk)}\n\n")
-                        writer.flush()
-                    }
+                    channel.trySend(token)
                 }
-                writer.writeStringUtf8("data: [DONE]\n\n")
-                writer.flush()
-                deferred.complete(Unit)
+                channel.close()
             } catch (e: Exception) {
-                runBlocking {
-                    writer.writeStringUtf8("data: {\"error\": \"${e.message}\"}\n\n")
-                    writer.writeStringUtf8("data: [DONE]\n\n")
-                    writer.flush()
-                }
-                deferred.completeExceptionally(e)
+                channel.close(e)
             }
         }
-        deferred.await()
+
+        try {
+            for (token in channel) {
+                val chunk = CompletionChunk(
+                    id = id,
+                    created = created,
+                    model = modelName,
+                    choices = listOf(
+                        CompletionChunkChoice(
+                            index = 0,
+                            text = token
+                        )
+                    )
+                )
+                writer.writeStringUtf8("data: ${Json.encodeToString(chunk)}\n\n")
+                writer.flush()
+            }
+            writer.writeStringUtf8("data: [DONE]\n\n")
+            writer.flush()
+        } catch (e: Exception) {
+            writer.writeStringUtf8("data: {\"error\": \"${e.message}\"}\n\n")
+            writer.writeStringUtf8("data: [DONE]\n\n")
+            writer.flush()
+        }
+
+        generationJob.join()
     }
 }
