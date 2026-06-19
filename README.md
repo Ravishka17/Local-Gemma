@@ -1,106 +1,107 @@
-# Mobile Server
+# LocalGemma — A CLI for running local GGUF models with an OpenAI-compatible API
 
-Welcome to **Mobile Server**! This project turns any modern Android phone into a completely free, 100% private, OpenAI-compatible local AI server.
+LocalGemma is a lightweight Kotlin/JVM command-line tool that lets you run GGUF models locally using [llama.cpp](https://github.com/ggerganov/llama.cpp) and exposes an OpenAI-compatible HTTP API. Think of it as a minimal, hackable alternative to Ollama.
 
-> **Note:** This project was built by forking the incredible [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery). We took their powerful on-device inference engine and extended it with a built-in Ktor server and tunneling capabilities!
+## Prerequisites
 
-**🎥 Watch the Setup & Demo Video:** [https://youtu.be/9Dh3kKWFFjg](https://youtu.be/43oZPoQiqoY)
+- **JDK 17+**
+- **CMake 3.16+**
+- **C++17 compiler** (GCC, Clang, or MSVC)
+- **Git**
 
-[![Turn Your Android Into Private AI Server](https://img.youtube.com/vi/43oZPoQiqoY/maxresdefault.jpg)](https://youtu.be/43oZPoQiqoY)
+## Installation
 
+### Quick install
 
----
-
-## 🚀 What Does This Do?
-
-With this app, you can run Large Language Models (like Google's Gemma 4) directly on your phone's hardware, and securely expose that model to the internet using **Ngrok** or **Cloudflare Tunnels**. 
-
-Because the server perfectly mimics the standard OpenAI API structure (`/v1/models`, `/v1/chat/completions`), you can seamlessly integrate it into existing AI tools.
-
-**Use Cases:**
-1. **Free AI Coding Assistant:** Point the [Continue.dev](https://continue.dev) VS Code extension to your phone's Cloudflare URL to get $0/mo local code autocomplete and chat.
-2. **Private Smart Home Brain:** Connect it to Home Assistant for a completely private, offline-capable smart home AI.
-3. **The "EdgeNode" Web App:** Use our provided HTML/JS frontend to chat with your phone from any web browser in the world.
-
----
-
-## ✨ Features
-
-- **OpenAI-Compatible API:** Zero-configuration drop-in replacement for OpenAI endpoints.
-- **Built-in Tunneling:** One-tap toggle to instantly expose your server to the internet via Ngrok or Cloudflare Tunnels (bypasses NATs and firewalls).
-- **Foreground Service:** The server and the LLM remain running in the background even when your screen is off.
-- **100% Private:** Your prompts and data never leave the phone (except via your own encrypted tunnel).
-
----
-
-## 📦 Installation
-
-You don't need to build this from source! 
-
-👉 **[Download arm64-v8a](https://github.com/techjarves/mobile-server/releases/download/first/app-arm64-v8a-release.apk)** — for most modern phones
-
-👉 **[Download armeabi-v7a](https://github.com/techjarves/mobile-server/releases/download/first/app-armeabi-v7a-release.apk)** — for older 32-bit devices
-
-👉 **[Download universal](https://github.com/techjarves/mobile-server/releases/download/first/app-universal-release.apk)** — fallback for all devices
-
-### Pick the right APK for your device
-
-We provide **split ABI APKs** to reduce install size and fix parsing issues on certain devices. Choose the APK that matches your phone's CPU:
-
-| APK | Size | Device Type |
-|-----|------|-------------|
-| [app-arm64-v8a-release.apk](https://github.com/techjarves/mobile-server/releases/download/first/app-arm64-v8a-release.apk) | ~63 MB | **Most modern phones** (Pixel, Samsung, Xiaomi, OnePlus, etc.) |
-| [app-armeabi-v7a-release.apk](https://github.com/techjarves/mobile-server/releases/download/first/app-armeabi-v7a-release.apk) | ~35 MB | Older 32-bit ARM devices |
-| [app-universal-release.apk](https://github.com/techjarves/mobile-server/releases/download/first/app-universal-release.apk) | ~73 MB | Fallback — works on all devices |
-
-> 💡 **Not sure which one?** Download `app-arm64-v8a-release.apk` — it works on the vast majority of Android phones released after 2016.
-
-Simply download the APK, install it on your Android device, download a model from the list, and turn the server on.
-
----
-
-## 💻 Web App Demo
-
-Want to test it out without writing any code? We have hosted a sleek, glassmorphism-styled web interface for you!
-
-🌐 **[Try the Live Web App Demo](https://mobile-server-app.web.app)**
-
-Just open the link, paste in your phone's Cloudflare or Ngrok tunnel URL, and start chatting instantly! (The source code for this web app is also available in the `/webapp-demo` folder).
-
----
-
-## 🛠️ Development
-
-If you want to build the project from source:
-
-### Prerequisites
-- Android SDK 35
-- JDK 17+
-
-### Build
 ```bash
-cd Android/src
-./gradlew :app:assembleRelease
+git clone --recursive https://github.com/techjarves/localgemma.git
+cd localgemma
+./scripts/install.sh
 ```
 
-The split APKs will be generated in:
+### Manual install
+
+```bash
+git clone --recursive https://github.com/techjarves/localgemma.git
+cd localgemma
+cmake -S . -B build/cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cmake --parallel
+./gradlew installDist
+ln -s "$(pwd)/build/install/localgemma/bin/localgemma" /usr/local/bin/localgemma
 ```
-Android/src/app/build/outputs/apk/release/
+
+## Quick Start
+
+```bash
+# Pull a model from the built-in allowlist
+localgemma pull gemma-2b-it-q4
+
+# Chat interactively
+localgemma run gemma-2b-it-q4
+
+# Start the OpenAI-compatible server
+localgemma serve --model gemma-2b-it-q4
 ```
 
-| Output | Description |
-|--------|-------------|
-| `app-arm64-v8a-release.apk` | Modern 64-bit ARM phones |
-| `app-armeabi-v7a-release.apk` | Older 32-bit ARM devices |
-| `app-universal-release.apk` | All ABIs in one APK (fallback) |
+## API
 
-### Android Studio
-1. Clone this repository.
-2. Open the `/Android/src` folder in Android Studio.
-3. Build the `Debug` or `Release` variant.
+LocalGemma exposes the following endpoints:
 
-> **Note:** We have explicitly configured `android:extractNativeLibs="true"` so that the tunneling binaries extract properly in Release builds.
+- `GET /v1/models`
+- `GET /v1/models/{modelId}`
+- `POST /v1/chat/completions`
+- `POST /v1/completions`
 
-## 📄 License
+### Example: non-streaming chat
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma-2b-it-q4",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+### Example: streaming chat
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma-2b-it-q4",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `serve` | Start the OpenAI-compatible API server |
+| `run <model>` | Run an interactive chat session |
+| `pull <model>` | Download a model from the allowlist or a HuggingFace URL |
+| `list` | List installed models |
+| `rm <model>` | Remove an installed model |
+| `ps` | Show installed model status |
+
+## Supported Models
+
+Built-in models are defined in `src/main/resources/model_allowlist.json`. You can also pull arbitrary GGUF files from HuggingFace:
+
+```bash
+localgemma pull https://huggingface.co/bartowski/gemma-2b-it-GGUF/resolve/main/gemma-2b-it-Q4_K_M.gguf
+```
+
+## Configuration
+
+LocalGemma stores its data in `~/.localgemma/`:
+
+- `config.json` — server defaults, HuggingFace token, etc.
+- `models/` — downloaded GGUF files
+- `models.json` — installed model registry
+
+## License
 
 Licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.

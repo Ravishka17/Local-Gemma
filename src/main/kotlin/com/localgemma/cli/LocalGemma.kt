@@ -49,7 +49,7 @@ class Serve : CliktCommand(name = "serve") {
             server.stop()
         })
 
-        server.start(host, port)
+        server.start(host, port, model)
         logger.info("Server running at http://$host:$port")
         logger.info("Press Ctrl+C to stop")
 
@@ -213,12 +213,11 @@ class Ps : CliktCommand(name = "ps") {
             echo("No models installed.")
             return
         }
-        echo(String.format("%-20s %-10s %-10s", "NAME", "LOADED", "SIZE"))
+        echo(String.format("%-20s %-10s %-10s", "NAME", "STATUS", "SIZE"))
         echo("-".repeat(50))
         for (m in models) {
             val size = if (m.sizeInBytes > 0) "%.1f GB".format(m.sizeInBytes / (1024.0 * 1024 * 1024)) else "?"
-            val loaded = "no"
-            echo(String.format("%-20s %-10s %-10s", m.name, loaded, size))
+            echo(String.format("%-20s %-10s %-10s", m.name, "installed", size))
         }
     }
 }

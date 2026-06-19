@@ -9,15 +9,6 @@ class LlamaCppEngine : InferenceEngine {
     private val logger = LoggerFactory.getLogger(LlamaCppEngine::class.java)
     private val stopFlags = ConcurrentHashMap<Long, AtomicBoolean>()
 
-    init {
-        try {
-            LlamaCppNative.nVocab(0L)
-        } catch (e: UnsatisfiedLinkError) {
-            logger.error("llama.cpp native library not found. Please build and place libllama in src/main/resources/native/ or java.library.path.")
-            throw IllegalStateException("llama.cpp native library not loaded: ${e.message}", e)
-        }
-    }
-
     override fun load(model: InstalledModel): LoadedModel {
         val path = model.ggufPath
         logger.info("Loading model from $path")

@@ -1,11 +1,86 @@
-# Development notes
+# Development
 
-## Build app locally
+## Prerequisites
 
-To successfully build and run the application through Android Studio, you need to configure it with your own HuggingFace Developer Application ([official doc](https://huggingface.co/docs/hub/oauth#creating-an-oauth-app)). This is required for the model download functionality to work correctly.
+- JDK 17+
+- CMake 3.16+
+- C++17 compiler (GCC, Clang, or MSVC)
+- Git
 
-After you've created a developer application:
+## Clone
 
-1. In [`ProjectConfig.kt`](https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/common/ProjectConfig.kt), replace the placeholders for `clientId` and `redirectUri` with the values from your HuggingFace developer application.
+```bash
+git clone --recursive https://github.com/techjarves/localgemma.git
+cd localgemma
+```
 
-1. In [`app/build.gradle.kts`](https://github.com/google-ai-edge/gallery/blob/c1b50e160a66d5ea2ec2d8d8e63088b3cc0761bc/Android/src/app/build.gradle.kts#L41-L44), modify the `manifestPlaceholders["appAuthRedirectScheme"]` value to match the redirect URL you configured in your HuggingFace developer application.
+If you already cloned without `--recursive`, initialize the submodule:
+
+```bash
+git submodule update --init --recursive
+```
+
+The llama.cpp submodule is pinned to tag `b9704`.
+
+## Build the native library
+
+```bash
+cmake -S . -B build/cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cmake --parallel
+```
+
+This produces a shared library (`liblocalgemma.so`, `liblocalgemma.dylib`, or `localgemma.dll`) in `build/cmake/`.
+
+## Build and run the Kotlin app
+
+```bash
+# Run directly from Gradle
+./gradlew run --args="serve"
+
+# Or build a distribution
+./gradlew installDist
+./build/install/localgemma/bin/localgemma serve --model gemma-2b-it-q4
+```
+
+The Gradle `processResources` task depends on the CMake build, so the native library is automatically copied into `build/resources/main/native/` and bundled in the fat JAR.
+
+## Project structure
+
+```
+src/main/kotlin/com/localgemma/
+  cli/LocalGemma.kt          # Clikt CLI entry point
+  api/OpenAiServer.kt        # Ktor OpenAI-compatible server
+  api/OpenAiModels.kt        # Request/response DTOs
+  inference/
+    InferenceEngine.kt       # Engine interface
+    LlamaCppEngine.kt        # llama.cpp wrapper
+    LlamaCppNative.kt        # JNI declarations
+    GenerationParams.kt      # Sampling parameters
+  model/
+    Model.kt                 # Data classes
+    ModelRegistry.kt         # Installed model persistence
+    ModelAllowlist.kt        # Built-in model catalog
+    ModelDownloader.kt       # HuggingFace download logic
+  config/
+    ConfigManager.kt         # ~/.localgemma/config.json
+    AppConfig.kt             # Config data class
+
+src/main/cpp/
+  llama_jni.cpp              # JNI bridge to llama.cpp C API
+
+vendor/llama.cpp/            # Git submodule
+```
+
+## Running tests
+
+```bash
+./gradlew test
+```
+
+## Manual native library placement
+
+If you prefer not to run CMake through Gradle, you can build manually and place the shared library in `src/main/resources/native/`. The runtime extraction logic in `LlamaCppNative.loadNativeLibrary()` will find it there.
+
+## Windows notes
+
+On Windows, use `gradlew.bat` instead of `./gradlew`. The install script skips the symlink step on Windows and advises adding `build/install/localgemma/bin` to `%PATH%`.

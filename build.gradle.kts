@@ -38,3 +38,57 @@ tasks.jar {
         attributes["Main-Class"] = "com.localgemma.cli.LocalGemmaKt"
     }
 }
+
+val cmakeConfigure by tasks.registering(Exec::class) {
+    group = "native"
+    description = "Configure CMake build for the JNI bridge"
+    inputs.file("CMakeLists.txt")
+    inputs.file("src/main/cpp/llama_jni.cpp")
+    outputs.dir("build/cmake")
+
+    commandLine("cmake", "-S", ".", "-B", "build/cmake", "-DCMAKE_BUILD_TYPE=Release")
+}
+
+val cmakeBuild by tasks.registering(Exec::class) {
+    group = "native"
+    description = "Build the JNI bridge shared library"
+    dependsOn(cmakeConfigure)
+    inputs.dir("src/main/cpp")
+    outputs.dir("build/cmake")
+
+    commandLine("cmake", "--build", "build/cmake", "--parallel")
+
+    doLast {
+        val osName = System.getProperty("os.name").lowercase()
+        val libFileName = when {
+            osName.contains("win") -> "localgemma.dll"
+            osName.contains("mac") -> "liblocalgemma.dylib"
+            else -> "liblocalgemma.so"
+        }
+
+        val source = file("build/cmake/$libFileName")
+        val destDir = file("build/resources/main/native")
+        destDir.mkdirs()
+        val dest = File(destDir, libFileName)
+
+        if (source.exists()) {
+            source.copyTo(dest, overwrite = true)
+            println("Copied native library to ${dest.absolutePath}")
+        } else {
+            // Some platforms may put it in a sub-directory
+            val found = fileTree("build/cmake").matching {
+                include("**/$libFileName")
+            }.files.firstOrNull()
+            if (found != null) {
+                found.copyTo(dest, overwrite = true)
+                println("Copied native library from ${found.absolutePath} to ${dest.absolutePath}")
+            } else {
+                throw GradleException("Native library $libFileName not found after CMake build")
+            }
+        }
+    }
+}
+
+tasks.processResources {
+    dependsOn(cmakeBuild)
+}
