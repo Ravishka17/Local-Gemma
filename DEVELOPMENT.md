@@ -10,8 +10,8 @@
 ## Clone
 
 ```bash
-git clone --recursive https://github.com/techjarves/localgemma.git
-cd localgemma
+git clone --recursive https://github.com/Ravishka17/Local-Gemma.git
+cd Local-Gemma
 ```
 
 If you already cloned without `--recursive`, initialize the submodule:
@@ -20,7 +20,7 @@ If you already cloned without `--recursive`, initialize the submodule:
 git submodule update --init --recursive
 ```
 
-The llama.cpp submodule is pinned to tag `b9704`.
+The llama.cpp submodule is tracked at the commit recorded in the git index.
 
 ## Build the native library
 
@@ -39,7 +39,7 @@ This produces a shared library (`liblocalgemma.so`, `liblocalgemma.dylib`, or `l
 
 # Or build a distribution
 ./gradlew installDist
-./build/install/localgemma/bin/localgemma serve --model gemma-2b-it-q4
+./build/install/localgemma/bin/localgemma serve --model Gemma3-1B-IT-q4
 ```
 
 The Gradle `processResources` task depends on the CMake build, so the native library is automatically copied into `build/resources/main/native/` and bundled in the fat JAR.
