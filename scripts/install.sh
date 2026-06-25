@@ -66,6 +66,6 @@ else
     fi
     echo ""
     echo "Get started:"
-    echo "  localgemma pull gemma-2b-it-q4"
-    echo "  localgemma run gemma-2b-it-q4"
+    echo "  localgemma pull Gemma3-1B-IT-q4"
+    echo "  localgemma run Gemma3-1B-IT-q4"
 fi
